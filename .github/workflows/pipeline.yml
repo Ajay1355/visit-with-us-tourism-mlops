@@ -1,0 +1,107 @@
+name: Visit With Us Tourism MLOps Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  data-registration:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas==2.2.3
+      - name: Validate registered data
+        run: python model_building/data_register.py
+      - name: Upload registered dataset
+        uses: actions/upload-artifact@v4
+        with:
+          name: registered-data
+          path: data/tourism.csv
+
+  data-preparation:
+    needs: data-registration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install pandas==2.2.3 scikit-learn==1.5.2
+      - name: Download registered dataset
+        uses: actions/download-artifact@v4
+        with:
+          name: registered-data
+          path: data
+      - name: Prepare train and test data
+        run: python model_building/prep.py
+      - name: Upload train test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: train-test-data
+          path: |
+            artifacts/train.csv
+            artifacts/test.csv
+
+  model-training:
+    needs: data-preparation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ML dependencies
+        run: pip install pandas==2.2.3 numpy==1.26.4 scikit-learn==1.5.2 xgboost==2.1.4 joblib==1.4.2 mlflow==2.17.2
+      - name: Download train test artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: train-test-data
+          path: artifacts
+      - name: Train, tune, evaluate and track
+        run: python model_building/train.py
+      - name: Upload trained model and experiment artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-output
+          path: |
+            deployment/model.joblib
+            artifacts/metrics.json
+            artifacts/best_params.json
+            artifacts/experiment_log.json
+            mlruns
+
+  commit-model:
+    needs: model-training
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download model output
+        uses: actions/download-artifact@v4
+        with:
+          name: model-output
+          path: .
+      - name: Commit updated model and metrics
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add deployment/model.joblib artifacts/metrics.json artifacts/best_params.json artifacts/experiment_log.json
+          git diff --cached --quiet || git commit -m 'Update trained tourism model [skip ci]'
+          git push
