@@ -8,7 +8,7 @@ ARTIFACT_DIR = ROOT / 'artifacts'
 ARTIFACT_DIR.mkdir(exist_ok=True)
 
 df = pd.read_csv(DATA_FILE)
-df = df.drop(columns=['CustomerID'])
+df = df.drop(columns=['CustomerID', 'Unnamed: 0'])
 
 X = df.drop(columns=['ProdTaken'])
 y = df['ProdTaken'].astype(int)
